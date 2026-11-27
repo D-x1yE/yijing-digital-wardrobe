@@ -1,0 +1,90 @@
+# Ignore Python cache files
+**/__pycache__
+
+# Ignore compiled Python files
+*.pyc
+*.egg
+*.whl
+
+# Ignore editor-specific files
+.vscode/
+.idea/
+
+# Ignore operating system files
+.DS_Store
+Thumbs.db
+
+# Ignore log files
+*.log
+
+# Ignore temporary and cache files
+*.tmp
+*.cache
+.cache/
+
+# Ignore build artifacts
+/build/
+/dist/
+
+# Ignore virtual environment files
+/venv/
+/.venv/
+
+# Ignore package manager files
+/node_modules/
+/yarn.lock
+/package-lock.json
+
+# Ignore database files
+*.db
+*.sqlite
+
+# Ignore secret files
+*.secret
+
+# Ignore compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore backup files
+*.bak
+*.swp
+*.swo
+*.~*
+
+# User Setting
+debug/
+evaluation/
+debug/app_test/
+example_data/
+exps/
+exps
+gfpgan/
+thirdparty/
+train_data/
+pretrained_models/
+motion_video/
+outputs/
+
+debug_vis/
+pretrained_models
+train_data
+gfpgan
+
+# Ignore pointops build artifacts
+lib/pointops/build/
+lib/pointops/dist/
+
+# Ignore additional third-party libs
+lib/diff-gaussian-rasterization/
+lib/simple-knn/
+release_tools/
+
+debug_tools/
+
+# Local evaluation helpers (not part of the public release)
+scripts/inference/dynamic/run_eval_benchmark_suite.py
+scripts/inference/dynamic/run_eval_benchmark_suite.sh
+tools/metrics/build_metrics_table_md.py

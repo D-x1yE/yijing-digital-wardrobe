@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{overflow:hidden;margin:0;background:#101722;color:white;font:14px system-ui}#root{position:absolute;inset:0}#info{position:absolute;top:12px;left:12px;z-index:2;pointer-events:none}#tools{position:absolute;bottom:14px;left:12px;right:12px;z-index:3;display:flex;flex-wrap:wrap;gap:4px;align-items:center}select{padding:8px;background:#234153;color:white;border:1px solid #5a8194;border-radius:7px}label{display:flex;gap:4px;align-items:center}button{padding:9px;background:#234153;color:white;border:1px solid #5a8194;border-radius:7px;cursor:pointer}.studio #info{display:none}.studio #tools{gap:6px;left:14px;right:14px;bottom:14px}.studio #tools button,.studio #tools select{font:11px system-ui;background:#26332edb;color:#dce5df;border:1px solid #56645b;border-radius:6px;padding:8px 10px}.studio #tools button:hover{background:#3a5042}.studio #tools label{font-size:10px;color:#a6b6aa}</style><div id="root"></div><div id="info">正在加载本地高斯模型…</div><div id="tools"><button data-view="0">正面</button><button data-view="90">侧面</button><button data-view="180">背面</button><button id="flip">翻转上下</button><button id="shot">导出当前视角 PNG</button></div><script type="importmap">{"imports":{"three":"./lib/three.module.js"}}</script><script type="module">
+import * as GS from './lib/gaussian-splats-3d.module.js?v=quality2';
+const params=new URLSearchParams(location.search);if(params.get('ui')==='studio')document.body.classList.add('studio');const id=params.get('id');if(!/^[a-zA-Z0-9_]+$/.test(id))throw Error('Invalid model id');
+const quality=Number(params.get('quality')||localStorage.getItem('gs-quality')||2);
+const pixelRatio=[1,1.5,2].includes(quality)?quality:2;
+const qualityLabel=document.createElement('label');qualityLabel.textContent='显示清晰度 ';
+const qualitySelect=document.createElement('select');qualitySelect.setAttribute('aria-label','显示清晰度');
+for(const [value,label] of [[1,'流畅 1×'],[1.5,'均衡 1.5×'],[2,'高清 2×']]){const o=new Option(label,value);o.selected=value===pixelRatio;qualitySelect.add(o)}
+qualityLabel.append(qualitySelect);document.querySelector('#tools').append(qualityLabel);
+qualitySelect.onchange=()=>{localStorage.setItem('gs-quality',qualitySelect.value);params.set('quality',qualitySelect.value);location.search=params.toString()};
+const info=document.querySelector('#info');
+try{const m=await fetch(`studio_results/${id}/record.json`).then(r=>r.json());const c=m.metrics.center,d=m.metrics.radius*2.9;
+const viewer=new GS.Viewer({rootElement:document.querySelector('#root'),renderPixelRatio:pixelRatio,cameraUp:[0,1,0],initialCameraPosition:[c[0],c[1],c[2]+d],initialCameraLookAt:c,sharedMemoryForWorkers:false,gpuAcceleratedSort:false,integerBasedSort:false,sphericalHarmonicsDegree:0,antialiased:false,sceneRevealMode:GS.SceneRevealMode.Instant,renderMode:GS.RenderMode.Always});
+await viewer.addSplatScene(`studio_results/${id}/gaussian.ply`,{splatAlphaRemovalThreshold:1,showLoadingUI:true});viewer.start();info.textContent=`${m.metrics.gaussians.toLocaleString()} 个三维高斯 · ${pixelRatio}× 分辨率 · 拖动旋转 / 滚轮缩放 / 右键平移`;
+for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>{const a=+b.dataset.view*Math.PI/180;viewer.camera.position.set(c[0]+Math.sin(a)*d,c[1],c[2]+Math.cos(a)*d);viewer.camera.lookAt(...c);viewer.controls.target.set(...c);viewer.controls.update()};
+const initialView=new URLSearchParams(location.search).get('view');const initialAngle={front:'0',side:'90',back:'180'}[initialView];if(initialAngle)document.querySelector('[data-view=\"'+initialAngle+'\"]').click();
+document.querySelector('#flip').onclick=()=>{viewer.camera.up.y*=-1;viewer.controls.update()};
+const shot=document.querySelector('#shot');
+let capturing=false;
+shot.onclick=async()=>{if(capturing)return;capturing=true;shot.disabled=true;const enabled=viewer.controls.enabled;viewer.controls.enabled=false;
+try{if(viewer.sortPromise)await viewer.sortPromise;await viewer.runSplatSort(true,true);if(viewer.sortPromise)await viewer.sortPromise;viewer.splatMesh.updateVisibleRegionFadeDistance(GS.SceneRevealMode.Instant);viewer.render();const a=document.createElement('a');a.download='gaussian-view.png';a.href=viewer.renderer.domElement.toDataURL('image/png');a.click()}
+catch(e){info.textContent='截图失败：'+e.message}
+finally{viewer.controls.enabled=enabled;shot.disabled=false;capturing=false}};
+}catch(e){info.textContent='高斯加载失败：'+e.message;console.error(e)}
+</script></html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LHM++ 数字人工作台</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5f8;color:#203344;font:16px/1.75 system-ui}header{background:#143b4b;color:white;padding:28px 5%}header small{color:#91e1d3;letter-spacing:2px}h1{margin:8px 0;font-size:32px}header p{margin:4px 0;color:#c0d6e0}main{max-width:1500px;margin:auto;padding:25px;display:grid;grid-template-columns:320px minmax(0,1fr);gap:24px}.card{background:white;border:1px solid #dde5eb;border-radius:15px;padding:22px;margin-bottom:18px}button,.link{background:#087f83;color:white;border:0;border-radius:8px;padding:11px 15px;cursor:pointer;margin:6px 4px 6px 0;text-decoration:none;display:inline-block}button:disabled{opacity:.4;cursor:wait}input,select{max-width:100%;margin:10px 0}select{display:block;width:100%;padding:10px;border:1px solid #c6d5df;border-radius:8px;background:white;color:#203344;font:inherit}label{display:block;font-weight:600}#thumbs{display:flex;gap:5px;flex-wrap:wrap}#thumbs img{width:65px;height:105px;object-fit:contain;background:#eef3f5}#jobs{max-height:440px;overflow:auto}#jobs button{width:100%;text-align:left;background:#edf4f5;color:#254;font-size:13px}#jobs button[aria-current=true]{outline:2px solid #087f83}iframe{width:100%;height:580px;border:0;border-radius:12px;background:#101722}small,.muted{color:#6b7c87}.downloads{display:flex;gap:8px;flex-wrap:wrap}pre{white-space:pre-wrap;overflow:auto;max-height:240px;font-size:12px}#status{color:#087f83}.empty{padding:65px 20px;text-align:center;background:#edf2f5;border-radius:10px}a{color:#087f83}video{display:block;max-width:100%;width:100%;height:500px;background:#f6f7f9;border-radius:10px}h2{margin-top:0;font-size:22px}.badge{font-size:13px;background:#dff4ee;color:#166557;border-radius:20px;padding:3px 10px;margin-left:8px}[hidden]{display:none!important}@media(max-width:800px){main{grid-template-columns:1fr;padding:12px}iframe{height:500px}video{height:440px}h1{font-size:26px}}
+</style>
+<header><small>LHM++ · 本地数字人</small><h1>从人物照片，到会动的数字人</h1><p>上传照片 → 选择预设动作 → 生成动画 → 播放与下载</p></header>
+<main><aside>
+<div class="card"><b>创建数字人</b><p class="muted">选择 1–4 张同一人物、同一套衣服的全身照片，尽量避免遮挡。</p>
+<input id="photos" type="file" multiple accept="image/png,image/jpeg,image/webp" aria-label="选择人物照片"><div id="thumbs"></div>
+<button id="sample">选择单图样例</button><button id="multiSample">选择双视角样例</button>
+<label for="motion">预设动作</label><select id="motion"><option value="Dance_I">舞蹈 · 约 4.8 秒</option><option value="TaiChi">太极 · 约 4.8 秒</option><option value="Jump">跳跃 · 约 2.5 秒</option><option value="">仅生成静态三维</option></select>
+<button id="generate" disabled>生成数字人与动画</button><p id="status" role="status" aria-live="polite">请选择人物照片</p>
+<small>照片在本机处理。动画逐帧渲染，请等待任务完成。</small></div>
+<div class="card"><b>历史数字人</b><p class="muted">点击已完成任务可直接演示。</p><div id="jobs"></div></div>
+</aside><section>
+<div class="card"><h2 id="title">数字人预览</h2><p id="meta" class="muted">选择历史结果，或上传照片开始生成。</p>
+<div id="empty" class="empty">生成后可以查看三维人物与动作视频。</div>
+<div id="animationPanel" hidden><h2>动作视频 <span class="badge" id="motionLabel"></span></h2><video id="animation" controls playsinline loop preload="metadata"></video><p id="animationMeta" class="muted"></p><div class="downloads"><a id="videoDownload" class="link" download="LHM-animation.mp4">下载动画 MP4</a></div></div>
+<div id="modelPanel" hidden><h2>三维人物</h2><p class="muted">可拖动旋转、滚轮缩放。此处展示静态标准姿态。</p><iframe id="viewer" title="数字人三维查看器"></iframe><div id="downloads" class="downloads"></div><p><a id="standalone" target="_blank">打开独立三维查看器 ↗</a></p></div>
+</div><details class="card"><summary>生成记录与模型说明</summary><p class="muted">模型：LHMPP-700M-SMPLX-FREE。动作使用官方 SMPL-X 骨骼驱动与高斯渲染，当前不含神经渲染增强、换装或语言编辑。未观测区域由模型推测，动作可能存在抖动或衣物形变。</p><pre id="log"></pre></details>
+</section></main>
+<script>
+const $=s=>document.querySelector(s);
+let selected=null,view=null,files=[],records=[],active=null,urls=[],signature='',submitting=false;
+function updateButton(){ $('#generate').disabled=!files.length||!!active||submitting;$('#generate').textContent=$('#motion').value?'生成数字人与动画':'生成静态三维'; }
+function choose(list){
+ urls.forEach(URL.revokeObjectURL);urls=[];files=[];$('#thumbs').replaceChildren();
+ if(list.length>4){$('#status').textContent='最多选择 4 张照片';updateButton();return;}
+ files=list;for(const f of files){const img=new Image();img.src=URL.createObjectURL(f);urls.push(img.src);img.alt=f.name||'演示照片';$('#thumbs').append(img);}
+ $('#status').textContent=files.length?`已选择 ${files.length} 张照片，请选择动作并生成`:'请选择人物照片';updateButton();
+}
+async function samples(paths){try{choose(await Promise.all(paths.map(async p=>{const r=await fetch(p);if(!r.ok)throw Error('样例加载失败');return r.blob();})));}catch(e){$('#status').textContent=e.message;}}
+$('#sample').onclick=()=>samples(['sample_person.png']);
+$('#multiSample').onclick=()=>samples(['lhm_samples/front.png','lhm_samples/back.png']);
+$('#photos').onchange=e=>choose(Array.from(e.target.files));$('#motion').onchange=updateButton;
+$('#generate').onclick=async()=>{
+ if(!files.length||submitting||active)return;submitting=true;updateButton();$('#status').textContent='正在提交照片…';
+ try{
+  const images=await Promise.all(files.map(f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f);})))
+  const r=await fetch('/api/studio/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Model-Backend':'lhm'},body:JSON.stringify({images,motion:$('#motion').value})});
+  const j=await r.json();if(!r.ok)throw Error(j.error);selected=j.id;await refresh();
+ }catch(e){$('#status').textContent=e.message;}finally{submitting=false;updateButton();}
+};
+function stage(m){
+ if(m.log?.includes('STAGE: rendered')){const a=[...m.log.matchAll(/STAGE: rendered (\d+)\/(\d+)/g)].pop();if(a)return `正在渲染动画：${a[1]} / ${a[2]} 帧`;}
+ if(m.log?.includes('STAGE: animation'))return '正在准备动作渲染…';
+ if(m.log?.includes('STAGE: photo to'))return '正在重建三维人物…';
+ if(m.log?.includes('STAGE: strict'))return '正在加载模型权重…';
+ return '正在预处理照片并准备模型…';
+}
+function show(m){
+ $('#title').textContent=m.status==='complete'?'数字人生成结果':m.status==='failed'?'生成失败':'正在生成';
+ $('#log').textContent=m.log||m.error||'';
+ const n=m.metrics?.input_count;
+ $('#meta').textContent=m.status==='complete'?`${n?n+' 张照片 · ':''}${(m.metrics?.gaussians||0).toLocaleString()} 个高斯${m.animation?' · '+m.animation.motion_label+'动画':''}`:'照片预处理 → 三维重建 → 骨骼驱动 → 逐帧渲染';
+ if(m.status==='running')$('#status').textContent=stage(m);
+ if(m.status==='failed')$('#status').textContent=m.error||'生成失败';
+ if(m.status==='complete'){
+  if(!files.length||$('#status').textContent.startsWith('正在'))$('#status').textContent=m.animation?'生成完成，可播放动画或查看三维结果':'生成完成，可查看三维结果';
+  if(view===m.id)return;view=m.id;$('#empty').hidden=true;$('#modelPanel').hidden=false;
+  $('#viewer').src='gs_viewer.html?id='+m.id+'&quality=1.5';$('#standalone').href=$('#viewer').src;
+  $('#downloads').replaceChildren();for(const [f,label] of [['gaussian.ply','下载三维模型'],['input.png','查看模型输入']]){const a=document.createElement('a');a.className='link';a.href='studio_results/'+m.id+'/'+f;a.download=f;a.textContent=label;$('#downloads').append(a);}
+  const hasVideo=!!m.animation&&m.files?.includes('animation.mp4');$('#animationPanel').hidden=!hasVideo;
+  if(hasVideo){const src='studio_results/'+m.id+'/animation.mp4';$('#animation').src=src;$('#animation').poster='studio_results/'+m.id+'/animation_poster.png';$('#videoDownload').href=src;$('#motionLabel').textContent=m.animation.motion_label;$('#animationMeta').textContent=`${m.animation.duration_seconds} 秒 · ${m.animation.frames} 帧 · ${m.animation.width} × ${m.animation.height} · 点击播放，可循环观看`;}else{$('#animation').pause();$('#animation').removeAttribute('src');$('#animation').load();}
+ }else{
+  view=null;$('#animation').pause();$('#animationPanel').hidden=true;$('#modelPanel').hidden=true;$('#viewer').removeAttribute('src');$('#empty').hidden=false;$('#empty').textContent=m.status==='failed'?'展开生成记录查看原因，然后重新选择照片生成。':stage(m);
+ }
+}
+async function refresh(){
+ const r=await fetch('/api/studio/jobs').then(r=>{if(!r.ok)throw Error('服务异常');return r.json();});active=r.active;
+ records=r.jobs.filter(m=>m.metrics?.model==='LHMPP-700M-SMPLX-FREE'||(m.kind==='gaussian'&&m.source?.includes('LHM++')));
+ const key=JSON.stringify(records.map(x=>[x.id,x.status,!!x.animation]));
+ if(key!==signature){signature=key;$('#jobs').replaceChildren();for(const m of records){const b=document.createElement('button');b.dataset.job=m.id;b.textContent=new Date(m.created*1000).toLocaleString()+' · '+({complete:'已完成',running:'生成中',failed:'失败'}[m.status]||m.status)+(m.animation?' · '+m.animation.motion_label:m.motion?' · 动画':' · 静态');b.onclick=()=>{selected=m.id;show(m);highlight();};$('#jobs').append(b);}}
+ updateButton();const m=records.find(x=>x.id===selected)||records[0];if(m){selected=m.id;show(m);}highlight();
+}
+function highlight(){for(const b of $('#jobs').children)b.setAttribute('aria-current',String(b.dataset.job===selected));}
+async function loop(){try{await refresh();}catch(e){$('#status').textContent='服务未连接，请使用一键启动脚本';}setTimeout(loop,3000);}loop();
+</script></html>
